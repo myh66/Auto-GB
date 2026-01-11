@@ -1,0 +1,7 @@
+{
+  "name": "AutoGB 智能识别",
+  "description": "Smart AI-powered receipt scanning and subsidy management application.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

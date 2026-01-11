@@ -1,0 +1,79 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Web App
+        run: npm run build
+
+      - name: Setup Capacitor Android
+        # Initialize android folder if it doesn't exist (Dynamic generation for CI)
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+          npx cap sync
+
+      - name: Configure APK Splits (Architectures)
+        # Dynamically inject the "splits" block into build.gradle to generate separate APKs per CPU architecture
+        run: |
+          cd android/app
+          # Inject splits config before buildTypes
+          sed -i '/buildTypes {/i \
+          splits {\
+              abi {\
+                  enable true\
+                  reset()\
+                  include "x86", "x86_64", "armeabi-v7a", "arm64-v8a"\
+                  universalApk true\
+              }\
+          }' build.gradle
+
+      - name: Build APK (Debug)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Organize Artifacts
+        run: |
+          mkdir -p build_output
+          # Copy the universal APK
+          find android/app/build/outputs/apk/debug -name "*universal-debug.apk" -exec cp {} build_output/AutoGB-Universal.apk \;
+          # Copy architecture specific APKs
+          find android/app/build/outputs/apk/debug -name "*arm64-v8a-debug.apk" -exec cp {} build_output/AutoGB-arm64.apk \;
+          find android/app/build/outputs/apk/debug -name "*armeabi-v7a-debug.apk" -exec cp {} build_output/AutoGB-armv7.apk \;
+          find android/app/build/outputs/apk/debug -name "*x86_64-debug.apk" -exec cp {} build_output/AutoGB-x86_64.apk \;
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoGB-Android-Builds
+          path: build_output/
